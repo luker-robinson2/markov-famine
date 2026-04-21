@@ -90,13 +90,15 @@ GAUL_COUNTRY_CODES = {"KEN": 133, "ETH": 79, "SOM": 226}
 # ---------------------------------------------------------------------------
 # Temporal Scope
 # ---------------------------------------------------------------------------
-ANALYSIS_START = "2009-01-01"  # IPC data reliability improves after 2009
-ANALYSIS_END = "2025-12-31"
+ANALYSIS_START = "2015-01-01"  # Panel starts 2015-01 (GEE satellite pulls); FEWS NET IPC probe back to 2011 documented in scripts/probe_ipc_history.py
+ANALYSIS_END = "2024-12-31"
 
-TRAIN_END = "2022-12-31"     # Train: 2009-2022
-VALID_START = "2023-01-01"   # Validate: 2023
+# Default split: train on 2015-2022 (8 years incl. 2016-17 and 2020-22 droughts),
+# validate on 2023, rolling-origin test across 2023-2024. See notebooks/07_rolling_origin.ipynb.
+TRAIN_END = "2022-12-31"
+VALID_START = "2023-01-01"
 VALID_END = "2023-12-31"
-TEST_START = "2024-01-01"    # Test: 2024
+TEST_START = "2024-01-01"
 TEST_END = "2024-12-31"
 
 # ---------------------------------------------------------------------------

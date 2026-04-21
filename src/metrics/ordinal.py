@@ -231,3 +231,75 @@ def mean_absolute_ordinal_error(
         Mean ordinal distance of errors. Lower is better.
     """
     return float(np.mean(np.abs(y_true.astype(float) - y_pred.astype(float))))
+
+
+def heidke_skill_score(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    n_states: int = N_STATES,
+) -> float:
+    """Heidke Skill Score for categorical forecasts.
+
+    HSS = (PC - PC_chance) / (1 - PC_chance)
+
+    where PC is the proportion correct and PC_chance is the proportion
+    correct expected by a forecast that is independent of observations
+    (outer product of marginals). Chance-corrected accuracy; ranges
+    (-inf, 1], with 0 = no skill and 1 = perfect. Reference:
+    Mason & Stephenson 2008, *Forecast Verification*, Wiley.
+
+    Parameters
+    ----------
+    y_true, y_pred : np.ndarray
+        Labels (0-indexed).
+    n_states : int
+        Number of categories.
+
+    Returns
+    -------
+    float
+        HSS value.
+    """
+    cm = ordinal_confusion_matrix(y_true, y_pred, n_states).astype(float)
+    n = cm.sum()
+    if n == 0:
+        return 0.0
+
+    pc = np.trace(cm) / n
+    row_marg = cm.sum(axis=1) / n
+    col_marg = cm.sum(axis=0) / n
+    pc_chance = float(np.sum(row_marg * col_marg))
+
+    denom = 1.0 - pc_chance
+    if denom == 0:
+        return 0.0
+    return float((pc - pc_chance) / denom)
+
+
+def f1_macro(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    n_states: int = N_STATES,
+) -> float:
+    """Unweighted mean F1 across classes.
+
+    Standard F1-macro for ordinal classification. Differs from
+    :func:`weighted_f1_score` which applies humanitarian cost weights.
+    Use F1-macro when comparing against literature (Andrée et al. 2022
+    *Science Advances*, Busker et al. 2024 *Earth's Future*).
+
+    Returns
+    -------
+    float
+        F1-macro in [0, 1]. Higher is better.
+    """
+    f1_per_class = np.zeros(n_states)
+    for c in range(n_states):
+        tp = np.sum((y_true == c) & (y_pred == c))
+        fp = np.sum((y_true != c) & (y_pred == c))
+        fn = np.sum((y_true == c) & (y_pred != c))
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        if precision + recall > 0:
+            f1_per_class[c] = 2 * precision * recall / (precision + recall)
+    return float(np.mean(f1_per_class))

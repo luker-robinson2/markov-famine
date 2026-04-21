@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from src.config import ALL_REGIONS, PROCESSED_DIR, RAW_DIR
+from src.config import ALL_REGIONS, PROCESSED_DIR, RAW_DIR, ANALYSIS_START, ANALYSIS_END
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,8 +31,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pull_missing")
 
-START = "2015-01-01"
-END = "2024-12-31"
+# Driven by src/config.py — extend backward by updating ANALYSIS_START there.
+START = ANALYSIS_START
+END = ANALYSIS_END
 TIMEOUT = 120
 
 

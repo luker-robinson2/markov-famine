@@ -9,6 +9,8 @@ from src.metrics.probabilistic import (
     brier_score,
     brier_skill_score,
     multi_class_log_loss,
+    rpss_vs_persistence,
+    bss_vs_persistence_macro,
 )
 from src.metrics.ordinal import (
     ordinal_confusion_matrix,
@@ -17,6 +19,8 @@ from src.metrics.ordinal import (
     crisis_detection_metrics,
     mean_absolute_ordinal_error,
     asymmetric_cost_score,
+    heidke_skill_score,
+    f1_macro,
 )
 
 
@@ -153,3 +157,96 @@ class TestOrdinalMetrics:
         cost_fn = asymmetric_cost_score(y_true, y_pred_fn, fn_weight=3.0, fp_weight=1.0)
         cost_fp = asymmetric_cost_score(y_true, y_pred_fp, fn_weight=3.0, fp_weight=1.0)
         assert cost_fn > cost_fp  # Missing crises costs more
+
+
+class TestHeidkeSkillScore:
+    """HSS: chance-corrected proportion correct."""
+
+    def test_perfect_forecast(self):
+        """HSS = 1 for perfect forecast."""
+        y = np.array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4])
+        assert heidke_skill_score(y, y) == pytest.approx(1.0)
+
+    def test_all_correct_but_trivial_is_zero(self):
+        """HSS handles the degenerate single-class case (no skill possible)."""
+        y_true = np.array([2, 2, 2, 2])
+        y_pred = np.array([2, 2, 2, 2])
+        # pc = 1, pc_chance = 1, so by our guard returns 0 (no skill possible).
+        assert heidke_skill_score(y_true, y_pred) == 0.0
+
+    def test_random_forecast_zero_on_average(self):
+        """Independently-drawn predictions give HSS near zero in expectation."""
+        rng = np.random.default_rng(0)
+        n = 5000
+        y_true = rng.integers(0, 4, size=n)
+        y_pred = rng.integers(0, 4, size=n)
+        hss = heidke_skill_score(y_true, y_pred, n_states=4)
+        assert abs(hss) < 0.05
+
+
+class TestF1Macro:
+    def test_perfect(self):
+        y = np.array([0, 1, 2, 3, 0, 1, 2, 3])
+        assert f1_macro(y, y, n_states=4) == pytest.approx(1.0)
+
+    def test_monotone_in_errors(self):
+        y_true = np.array([0, 1, 2, 3] * 10)
+        y_pred_good = y_true.copy()
+        y_pred_good[:4] = np.array([1, 0, 3, 2])  # 4 errors out of 40
+        y_pred_bad = np.zeros_like(y_true)  # all wrong except class 0
+        assert f1_macro(y_true, y_pred_good, n_states=4) > f1_macro(
+            y_true, y_pred_bad, n_states=4
+        )
+
+
+class TestSkillVsPersistence:
+    """Persistence-referenced skill scores — zero when model IS persistence."""
+
+    def test_rpss_vs_persistence_zero_for_persistence(self):
+        """A one-hot-on-current forecast should have RPSS-vs-persistence == 0."""
+        rng = np.random.default_rng(1)
+        n = 200
+        cur = rng.integers(0, 4, size=n)
+        # y_true = cur in 95% of samples (persistent panel)
+        y_true = cur.copy()
+        flips = rng.choice(n, size=int(0.05 * n), replace=False)
+        y_true[flips] = (y_true[flips] + 1) % 4
+        # Predicted probs = one-hot on current (pure persistence forecast)
+        probs = np.zeros((n, 4))
+        probs[np.arange(n), cur] = 1.0
+        rpss = rpss_vs_persistence(probs, y_true, cur, n_states=4)
+        assert rpss == pytest.approx(0.0, abs=1e-10)
+
+    def test_rpss_vs_persistence_positive_when_better(self):
+        """A model with some correct deviations from persistence beats it."""
+        rng = np.random.default_rng(2)
+        n = 400
+        cur = rng.integers(0, 4, size=n)
+        # Transitions happen in 20% of samples to +1 (capped at 3)
+        y_true = cur.copy()
+        flip_idx = rng.choice(n, size=int(0.20 * n), replace=False)
+        y_true[flip_idx] = np.minimum(cur[flip_idx] + 1, 3)
+        # Build a probabilistic forecast: puts 0.6 on current, 0.4 on current+1
+        probs = np.zeros((n, 4))
+        for i in range(n):
+            nxt = min(cur[i] + 1, 3)
+            probs[i, cur[i]] = 0.6
+            probs[i, nxt] = 0.4 if nxt != cur[i] else 0.0
+            if probs[i].sum() < 1:
+                probs[i, cur[i]] = 1 - probs[i].sum() + probs[i, cur[i]]
+        probs = probs / probs.sum(axis=1, keepdims=True)
+        rpss = rpss_vs_persistence(probs, y_true, cur, n_states=4)
+        assert rpss > 0
+
+    def test_bss_vs_persistence_zero_for_persistence(self):
+        """Class-averaged BSS-vs-persistence == 0 when model IS persistence."""
+        rng = np.random.default_rng(3)
+        n = 200
+        cur = rng.integers(0, 4, size=n)
+        y_true = cur.copy()
+        flips = rng.choice(n, size=int(0.05 * n), replace=False)
+        y_true[flips] = (y_true[flips] + 1) % 4
+        probs = np.zeros((n, 4))
+        probs[np.arange(n), cur] = 1.0
+        bss = bss_vs_persistence_macro(probs, y_true, cur, n_states=4)
+        assert bss == pytest.approx(0.0, abs=1e-10)

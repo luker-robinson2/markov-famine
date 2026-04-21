@@ -22,8 +22,14 @@ from src.metrics.ordinal import (
     crisis_detection_metrics,
     asymmetric_cost_score,
     weighted_f1_score,
+    heidke_skill_score,
+    f1_macro,
 )
-from src.metrics.probabilistic import ranked_probability_skill_score
+from src.metrics.probabilistic import (
+    ranked_probability_skill_score,
+    rpss_vs_persistence,
+    bss_vs_persistence_macro,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +187,8 @@ def evaluate_model(
 
     # Ordinal metrics (from src/metrics/ordinal.py)
     results["qwk"] = quadratic_weighted_kappa(yt0, yp0, n_states=n_states)
+    results["f1_macro"] = f1_macro(yt0, yp0, n_states=n_states)
+    results["hss"] = heidke_skill_score(yt0, yp0, n_states=n_states)
     results["weighted_f1"] = weighted_f1_score(yt0, yp0, n_states=n_states)
     results["asymmetric_cost"] = asymmetric_cost_score(yt0, yp0)
 
@@ -196,6 +204,14 @@ def evaluate_model(
         results["rpss"] = ranked_probability_skill_score(
             y_pred_proba, yt0, n_states=n_states,
         )
+        if current_phases is not None:
+            cp0 = np.asarray(current_phases) - 1
+            results["rpss_vs_persistence"] = rpss_vs_persistence(
+                y_pred_proba, yt0, cp0, n_states=n_states,
+            )
+            results["bss_vs_persistence"] = bss_vs_persistence_macro(
+                y_pred_proba, yt0, cp0, n_states=n_states,
+            )
 
     # Transition-conditional metrics (how well do we detect changes?)
     if current_phases is not None:
@@ -225,11 +241,15 @@ def evaluate_model(
 def compare_models(results_list: list[dict]) -> pd.DataFrame:
     """Format comparison table from a list of evaluate_model outputs."""
     df = pd.DataFrame(results_list)
-    # Reorder columns
+    # Reorder columns — skill-vs-persistence and transition detection first;
+    # R² / accuracy demoted (near-mechanical under IPC persistence).
     priority = [
-        "model", "accuracy", "r2", "qwk", "rpss", "mae",
+        "model",
+        "transition_detection_rate", "transition_accuracy",
+        "f1_macro", "qwk", "hss",
+        "rpss", "rpss_vs_persistence", "bss_vs_persistence",
         "crisis_recall", "crisis_precision", "crisis_f1",
-        "transition_accuracy", "transition_detection_rate",
+        "accuracy", "r2", "mae",
         "weighted_f1", "false_alarm_rate", "asymmetric_cost",
         "n_transitions", "n_total",
     ]

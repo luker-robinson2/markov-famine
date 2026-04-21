@@ -25,6 +25,7 @@ import google.auth
 from src.config import (
     ALL_REGIONS, GAUL_COUNTRY_CODES, GAUL_ASSET, GEE_ASSETS,
     PROCESSED_DIR, RAW_DIR,
+    ANALYSIS_START, ANALYSIS_END,
 )
 
 logging.basicConfig(
@@ -34,10 +35,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pull_all")
 
-START_YEAR = 2015
-END_YEAR = 2024
-START = f"{START_YEAR}-01-01"
-END = f"{END_YEAR}-12-31"
+# Date range driven by src/config.py (ANALYSIS_START / ANALYSIS_END).
+# Extension to 2011 captures the 2011 Somalia famine (Phase 5) events.
+START = ANALYSIS_START  # "2011-01-01" after revision
+END = ANALYSIS_END      # "2024-12-31"
+START_YEAR = int(START[:4])
+END_YEAR = int(END[:4])
 
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

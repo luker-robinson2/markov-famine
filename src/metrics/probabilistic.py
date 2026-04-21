@@ -120,6 +120,97 @@ def ranked_probability_skill_score(
     return 1.0 - rps_forecast / rps_reference
 
 
+def rpss_vs_persistence(
+    predicted_probs: np.ndarray,
+    y_true: np.ndarray,
+    current_phases: np.ndarray,
+    n_states: int = N_STATES,
+) -> float:
+    """Ranked Probability Skill Score with a **persistence** reference.
+
+    The reference forecast is a one-hot distribution on each sample's
+    current phase (i.e., ``P(S_{t+1} = s) = 1`` when ``s == S_t``). This
+    is the operationally relevant baseline for food-security forecasting
+    — persistence dominates overall accuracy on near-stationary targets
+    and any "skill" over it is the quantity practitioners care about.
+
+    Reference: Weigel et al. 2007, *Monthly Weather Review* 135.
+    Zhou et al. 2023 argues explicitly for this reference in the food-
+    security context (*Scientific Reports* 13).
+
+    Parameters
+    ----------
+    predicted_probs : np.ndarray
+        Shape ``(n_samples, n_states)``. Model predictions.
+    y_true : np.ndarray
+        Shape ``(n_samples,)``. True labels (0-indexed).
+    current_phases : np.ndarray
+        Shape ``(n_samples,)``. Current-period phases (0-indexed).
+    n_states : int
+        Number of ordered categories.
+
+    Returns
+    -------
+    float
+        RPSS vs. persistence. >0 iff the model beats persistence.
+    """
+    n_samples = len(y_true)
+    ref = np.zeros((n_samples, n_states))
+    cp = np.asarray(current_phases).astype(int)
+    ref[np.arange(n_samples), cp] = 1.0
+    return ranked_probability_skill_score(
+        predicted_probs, y_true, reference_probs=ref, n_states=n_states
+    )
+
+
+def bss_vs_persistence_macro(
+    predicted_probs: np.ndarray,
+    y_true: np.ndarray,
+    current_phases: np.ndarray,
+    n_states: int = N_STATES,
+) -> float:
+    """Class-averaged Brier Skill Score with a persistence reference.
+
+    For each class c, the reference forecast assigns probability 1 to
+    class c when ``current_phase == c`` and 0 otherwise (one-hot
+    persistence). The macro-averaged BSS across all classes is
+    returned. Because the reference Brier score for a given class can
+    be zero (e.g., when no samples ever occupy that phase under
+    persistence), that class is skipped in the mean.
+
+    Parameters
+    ----------
+    predicted_probs : np.ndarray
+        Shape ``(n_samples, n_states)``.
+    y_true : np.ndarray
+        Shape ``(n_samples,)``. 0-indexed.
+    current_phases : np.ndarray
+        Shape ``(n_samples,)``. 0-indexed.
+    n_states : int
+
+    Returns
+    -------
+    float
+        Mean BSS across classes. >0 iff the model beats persistence on
+        average.
+    """
+    cp = np.asarray(current_phases).astype(int)
+    yt = np.asarray(y_true).astype(int)
+
+    bss_values = []
+    for c in range(n_states):
+        bs_fore = brier_score(predicted_probs, yt, c)
+        ref_p = (cp == c).astype(float)
+        o = (yt == c).astype(float)
+        bs_ref = float(np.mean((ref_p - o) ** 2))
+        if bs_ref == 0:
+            continue
+        bss_values.append(1.0 - bs_fore / bs_ref)
+    if not bss_values:
+        return 0.0
+    return float(np.mean(bss_values))
+
+
 def brier_score(
     predicted_probs: np.ndarray,
     y_true: np.ndarray,
